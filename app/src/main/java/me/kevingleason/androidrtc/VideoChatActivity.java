@@ -1,12 +1,19 @@
 package me.kevingleason.androidrtc;
 
+import android.*;
+import android.Manifest;
 import android.app.Activity;
 import android.app.ListActivity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.opengl.GLSurfaceView;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -38,6 +45,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
+
 import me.kevingleason.androidrtc.adapters.ChatAdapter;
 import me.kevingleason.androidrtc.adt.ChatMessage;
 import me.kevingleason.androidrtc.servers.XirSysRequest;
@@ -56,6 +66,8 @@ public class VideoChatActivity extends ListActivity {
     public static final String AUDIO_TRACK_ID = "audioPN";
     public static final String LOCAL_MEDIA_STREAM_ID = "localStreamPN";
 
+    private final String tag = "testRun";
+
     private PnRTCClient pnRTCClient;
     private VideoSource localVideoSource;
     private VideoRenderer.Callbacks localRender;
@@ -67,8 +79,12 @@ public class VideoChatActivity extends ListActivity {
     private TextView mCallStatus;
 
     private String username;
+    private String callUser;
     private boolean backPressed = false;
-    private Thread  backPressedThread = null;
+    boolean mType;
+    private Thread backPressedThread = null;
+
+    Bundle bundle = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,84 +101,12 @@ public class VideoChatActivity extends ListActivity {
             finish();
             return;
         }
-        this.username      = extras.getString(Constants.USER_NAME, "");
-        this.mChatList     = getListView();
-        this.mChatEditText = (EditText) findViewById(R.id.chat_input);
-        this.mCallStatus   = (TextView) findViewById(R.id.call_status);
-
-        // Set up the List View for chatting
-        List<ChatMessage> ll = new LinkedList<ChatMessage>();
-        mChatAdapter = new ChatAdapter(this, ll);
-        mChatList.setAdapter(mChatAdapter);
-
-        // First, we initiate the PeerConnectionFactory with our application context and some options.
-        PeerConnectionFactory.initializeAndroidGlobals(
-                this,  // Context
-                true,  // Audio Enabled
-                true,  // Video Enabled
-                true,  // Hardware Acceleration Enabled
-                null); // Render EGL Context
-
-        PeerConnectionFactory pcFactory = new PeerConnectionFactory();
-        this.pnRTCClient = new PnRTCClient(Constants.PUB_KEY, Constants.SUB_KEY, this.username);
-        List<PeerConnection.IceServer> servers = getXirSysIceServers();
-        if (!servers.isEmpty()){
-            this.pnRTCClient.setSignalParams(new PnSignalingParams());
-        }
-
-        // Returns the number of cams & front/back face device name
-        int camNumber = VideoCapturerAndroid.getDeviceCount();
-        String frontFacingCam = VideoCapturerAndroid.getNameOfFrontFacingDevice();
-        String backFacingCam = VideoCapturerAndroid.getNameOfBackFacingDevice();
-
-        // Creates a VideoCapturerAndroid instance for the device name
-        VideoCapturer capturer = VideoCapturerAndroid.create(frontFacingCam);
-
-        // First create a Video Source, then we can make a Video Track
-        localVideoSource = pcFactory.createVideoSource(capturer, this.pnRTCClient.videoConstraints());
-        VideoTrack localVideoTrack = pcFactory.createVideoTrack(VIDEO_TRACK_ID, localVideoSource);
-
-        // First we create an AudioSource then we can create our AudioTrack
-        AudioSource audioSource = pcFactory.createAudioSource(this.pnRTCClient.audioConstraints());
-        AudioTrack localAudioTrack = pcFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource);
-
-        // To create our VideoRenderer, we can use the included VideoRendererGui for simplicity
-        // First we need to set the GLSurfaceView that it should render to
-        this.videoView = (GLSurfaceView) findViewById(R.id.gl_surface);
-
-        // Then we set that view, and pass a Runnable to run once the surface is ready
+        videoView = findViewById(R.id.gl_surface);
+        //videoView.setEGLContextClientVersion(2);
         VideoRendererGui.setView(videoView, null);
 
-        // Now that VideoRendererGui is ready, we can get our VideoRenderer.
-        // IN THIS ORDER. Effects which is on top or bottom
-        remoteRender = VideoRendererGui.create(0, 0, 100, 100, VideoRendererGui.ScalingType.SCALE_ASPECT_FILL, false);
-        localRender = VideoRendererGui.create(0, 0, 100, 100, VideoRendererGui.ScalingType.SCALE_ASPECT_FILL, true);
-
-        // We start out with an empty MediaStream object, created with help from our PeerConnectionFactory
-        //  Note that LOCAL_MEDIA_STREAM_ID can be any string
-        MediaStream mediaStream = pcFactory.createLocalMediaStream(LOCAL_MEDIA_STREAM_ID);
-
-        // Now we can add our tracks.
-        mediaStream.addTrack(localVideoTrack);
-        mediaStream.addTrack(localAudioTrack);
-
-        // First attach the RTC Listener so that callback events will be triggered
-        this.pnRTCClient.attachRTCListener(new DemoRTCListener());
-
-        // Then attach your local media stream to the PnRTCClient.
-        //  This will trigger the onLocalStream callback.
-        this.pnRTCClient.attachLocalMediaStream(mediaStream);
-
-        // Listen on a channel. This is your "phone number," also set the max chat users.
-        this.pnRTCClient.listenOn("Kevin");
-        this.pnRTCClient.setMaxConnections(1);
-
-        // If the intent contains a number to dial, call it now that you are connected.
-        //  Else, remain listening for a call.
-        if (extras.containsKey(Constants.CALL_USER)) {
-            String callUser = extras.getString(Constants.CALL_USER, "");
-            connectToUser(callUser);
-        }
+        bundle = extras;
+        checkPermission(extras);
     }
 
     @Override
@@ -190,40 +134,44 @@ public class VideoChatActivity extends ListActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        this.videoView.onPause();
-        this.localVideoSource.stop();
+        if (videoView != null)
+            this.videoView.onPause();
+        if (localVideoSource != null)
+            this.localVideoSource.stop();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        this.videoView.onResume();
-        this.localVideoSource.restart();
+        if (videoView != null)
+            this.videoView.onResume();
+        if (localVideoSource != null)
+            this.localVideoSource.restart();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (this.localVideoSource != null) {
+        if (this.localVideoSource != null)
             this.localVideoSource.stop();
-        }
-        if (this.pnRTCClient != null) {
+        if (this.pnRTCClient != null)
             this.pnRTCClient.onDestroy();
-        }
     }
 
     @Override
     public void onBackPressed() {
-        if (!this.backPressed){
+        if (!this.backPressed) {
             this.backPressed = true;
-            Toast.makeText(this,"Press back again to end.",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Press back again to end.", Toast.LENGTH_SHORT).show();
             this.backPressedThread = new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
                         Thread.sleep(5000);
                         backPressed = false;
-                    } catch (InterruptedException e){ Log.d("VCA-oBP","Successfully interrupted"); }
+                    } catch (InterruptedException e) {
+                        Log.d("VCA-oBP", "Successfully interrupted");
+                    }
                 }
             });
             this.backPressedThread.start();
@@ -234,13 +182,26 @@ public class VideoChatActivity extends ListActivity {
         super.onBackPressed();
     }
 
-    public List<PeerConnection.IceServer> getXirSysIceServers(){
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+            //resume tasks needing this permission
+            Toast.makeText(this, "allow", Toast.LENGTH_SHORT).show();
+            if (bundle != null)
+                initPubNubRtc(bundle);
+        } else {
+            Toast.makeText(this, "deny", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public List<PeerConnection.IceServer> getXirSysIceServers() {
         List<PeerConnection.IceServer> servers = new ArrayList<PeerConnection.IceServer>();
         try {
             servers = new XirSysRequest().execute().get();
-        } catch (InterruptedException e){
+        } catch (InterruptedException e) {
             e.printStackTrace();
-        }catch (ExecutionException e){
+        } catch (ExecutionException e) {
             e.printStackTrace();
         }
         return servers;
@@ -251,7 +212,13 @@ public class VideoChatActivity extends ListActivity {
     }
 
     public void hangup(View view) {
-        this.pnRTCClient.closeAllConnections();
+        if (this.pnRTCClient != null) {
+            if (mType == Constants.RECEIVER_CALL)
+                pnRTCClient.closeConnection(callUser);
+            else
+                pnRTCClient.closeConnection(username);
+            //this.pnRTCClient.closeAllConnections();
+        }
         endCall();
     }
 
@@ -284,6 +251,129 @@ public class VideoChatActivity extends ListActivity {
         mChatEditText.setText("");
     }
 
+    private void initPubNubRtc(Bundle extras) {
+        this.username = extras.getString(Constants.USER_NAME, "");
+        this.mChatList = getListView();
+        this.mChatEditText = (EditText) findViewById(R.id.chat_input);
+        this.mCallStatus = (TextView) findViewById(R.id.call_status);
+
+        // Set up the List View for chatting
+        List<ChatMessage> ll = new LinkedList<ChatMessage>();
+        mChatAdapter = new ChatAdapter(this, ll);
+        mChatList.setAdapter(mChatAdapter);
+
+        // First, we initiate the PeerConnectionFactory with our application context and some options.
+        PeerConnectionFactory.initializeAndroidGlobals(
+                this,  // Context
+                true,  // Audio Enabled
+                true,  // Video Enabled
+                true,  // Hardware Acceleration Enabled
+                null); // Render EGL Context
+
+        PeerConnectionFactory pcFactory = new PeerConnectionFactory();
+        this.pnRTCClient = new PnRTCClient(Constants.PUB_KEY, Constants.SUB_KEY, this.username);
+        List<PeerConnection.IceServer> servers = getXirSysIceServers();
+        if (!servers.isEmpty()) {
+            this.pnRTCClient.setSignalParams(new PnSignalingParams());
+        }
+
+        // Returns the number of cams & front/back face device name
+        int camNumber = VideoCapturerAndroid.getDeviceCount();
+        String frontFacingCam = VideoCapturerAndroid.getNameOfFrontFacingDevice();
+        String backFacingCam = VideoCapturerAndroid.getNameOfBackFacingDevice();
+
+        // Creates a VideoCapturerAndroid instance for the device name
+        VideoCapturer capturer = VideoCapturerAndroid.create(frontFacingCam);
+
+        // First create a Video Source, then we can make a Video Track
+        localVideoSource = pcFactory.createVideoSource(capturer, this.pnRTCClient.videoConstraints());
+        VideoTrack localVideoTrack = pcFactory.createVideoTrack(VIDEO_TRACK_ID, localVideoSource);
+
+        // First we create an AudioSource then we can create our AudioTrack
+        AudioSource audioSource = pcFactory.createAudioSource(this.pnRTCClient.audioConstraints());
+        AudioTrack localAudioTrack = pcFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource);
+
+        // To create our VideoRenderer, we can use the included VideoRendererGui for simplicity
+        // First we need to set the GLSurfaceView that it should render to
+        //this.videoView = (GLSurfaceView) findViewById(R.id.gl_surface);
+
+        // Then we set that view, and pass a Runnable to run once the surface is ready
+        //VideoRendererGui.setView(videoView, null);
+
+        // Now that VideoRendererGui is ready, we can get our VideoRenderer.
+        // IN THIS ORDER. Effects which is on top or bottom
+        remoteRender = VideoRendererGui.create(0, 0, 100, 100, VideoRendererGui.ScalingType.SCALE_ASPECT_FILL, false);
+        localRender = VideoRendererGui.create(0, 0, 100, 100, VideoRendererGui.ScalingType.SCALE_ASPECT_FILL, true);
+
+        // We start out with an empty MediaStream object, created with help from our PeerConnectionFactory
+        //  Note that LOCAL_MEDIA_STREAM_ID can be any string
+        MediaStream mediaStream = pcFactory.createLocalMediaStream(LOCAL_MEDIA_STREAM_ID);
+
+        // Now we can add our tracks.
+        mediaStream.addTrack(localVideoTrack);
+        mediaStream.addTrack(localAudioTrack);
+
+        // First attach the RTC Listener so that callback events will be triggered
+        this.pnRTCClient.attachRTCListener(new DemoRTCListener());
+
+        // Then attach your local media stream to the PnRTCClient.
+        //  This will trigger the onLocalStream callback.
+        this.pnRTCClient.attachLocalMediaStream(mediaStream);
+
+        // Listen on a channel. This is your "phone number," also set the max chat users.
+        //this.pnRTCClient.listenOn("Kevin");
+        callUser = extras.getString(Constants.CALL_USER, "");
+        mType = extras.getBoolean(Constants.CALL_TYPE, false);
+        if (mType == Constants.RECEIVER_CALL)
+            this.pnRTCClient.listenOn(callUser);
+        else
+            this.pnRTCClient.listenOn(username);
+        this.pnRTCClient.setMaxConnections(1);
+        // If the intent contains a number to dial, call it now that you are connected.
+        //  Else, remain listening for a call.
+        if (extras.containsKey(Constants.CALL_USER)) {
+            //String callUser = extras.getString(Constants.CALL_USER, "");
+            connectToUser(callUser);
+        }
+    }
+
+    private void checkPermission(Bundle extras) {
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                    || ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+
+                // Should we show an explanation?
+                if (ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.CAMERA)
+                        || ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.RECORD_AUDIO)) {
+
+                    // Show an explanation to the user *asynchronously* -- don't block
+                    // this thread waiting for the user's response! After the user
+                    // sees the explanation, try again to request the permission.
+                    //Toast.makeText(this, "explain", Toast.LENGTH_SHORT).show();
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
+                            1);
+
+                } else {
+
+                    // No explanation needed, we can request the permission.
+
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
+                            1);
+                    //Toast.makeText(this, "request", Toast.LENGTH_SHORT).show();
+
+                    // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                    // app-defined int constant. The callback method gets the
+                    // result of the request.
+                }
+            } else {
+                initPubNubRtc(extras);
+            }
+        } else
+            initPubNubRtc(extras);
+    }
+
     /**
      * LogRTCListener is used for debugging purposes, it prints all RTC messages.
      * DemoRTC is just a Log Listener with the added functionality to append screens.
@@ -295,7 +385,7 @@ public class VideoChatActivity extends ListActivity {
             VideoChatActivity.this.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if(localStream.videoTracks.size()==0) return;
+                    if (localStream.videoTracks.size() == 0) return;
                     localStream.videoTracks.get(0).addRenderer(new VideoRenderer(localRender));
                 }
             });
@@ -304,18 +394,21 @@ public class VideoChatActivity extends ListActivity {
         @Override
         public void onAddRemoteStream(final MediaStream remoteStream, final PnPeer peer) {
             super.onAddRemoteStream(remoteStream, peer); // Will log values
+            Log.d(tag, "onAddRemoteStream");
             VideoChatActivity.this.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(VideoChatActivity.this,"Connected to " + peer.getId(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(VideoChatActivity.this, "Connected to " + peer.getId(), Toast.LENGTH_SHORT).show();
                     try {
-                        if(remoteStream.audioTracks.size()==0 || remoteStream.videoTracks.size()==0) return;
+                        if (remoteStream.audioTracks.size() == 0 || remoteStream.videoTracks.size() == 0)
+                            return;
                         mCallStatus.setVisibility(View.GONE);
                         remoteStream.videoTracks.get(0).addRenderer(new VideoRenderer(remoteRender));
                         VideoRendererGui.update(remoteRender, 0, 0, 100, 100, VideoRendererGui.ScalingType.SCALE_ASPECT_FILL, false);
                         VideoRendererGui.update(localRender, 72, 65, 25, 25, VideoRendererGui.ScalingType.SCALE_ASPECT_FIT, true);
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
-                    catch (Exception e){ e.printStackTrace(); }
                 }
             });
         }
@@ -327,8 +420,8 @@ public class VideoChatActivity extends ListActivity {
             JSONObject jsonMsg = (JSONObject) message;
             try {
                 String uuid = jsonMsg.getString(Constants.JSON_MSG_UUID);
-                String msg  = jsonMsg.getString(Constants.JSON_MSG);
-                long   time = jsonMsg.getLong(Constants.JSON_TIME);
+                String msg = jsonMsg.getString(Constants.JSON_MSG);
+                long time = jsonMsg.getLong(Constants.JSON_TIME);
                 final ChatMessage chatMsg = new ChatMessage(uuid, msg, time);
                 VideoChatActivity.this.runOnUiThread(new Runnable() {
                     @Override
@@ -336,7 +429,7 @@ public class VideoChatActivity extends ListActivity {
                         mChatAdapter.addMessage(chatMsg);
                     }
                 });
-            } catch (JSONException e){
+            } catch (JSONException e) {
                 e.printStackTrace();
             }
         }
@@ -351,10 +444,15 @@ public class VideoChatActivity extends ListActivity {
                     mCallStatus.setVisibility(View.VISIBLE);
                 }
             });
-            try {Thread.sleep(1500);} catch (InterruptedException e){e.printStackTrace();}
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             Intent intent = new Intent(VideoChatActivity.this, MainActivity.class);
             startActivity(intent);
             finish();
         }
     }
+
 }

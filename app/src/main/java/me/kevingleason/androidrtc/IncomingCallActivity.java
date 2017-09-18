@@ -13,7 +13,6 @@ import android.widget.Toast;
 import com.pubnub.api.Callback;
 import com.pubnub.api.Pubnub;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import me.kevingleason.androidrtc.util.Constants;
@@ -86,6 +85,7 @@ public class IncomingCallActivity extends Activity {
         Intent intent = new Intent(IncomingCallActivity.this, VideoChatActivity.class);
         intent.putExtra(Constants.USER_NAME, this.username);
         intent.putExtra(Constants.CALL_USER, this.callUser);
+        intent.putExtra(Constants.CALL_TYPE, Constants.RECEIVER_CALL);
         startActivity(intent);
     }
 

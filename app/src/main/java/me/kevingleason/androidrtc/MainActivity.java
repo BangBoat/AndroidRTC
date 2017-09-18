@@ -1,9 +1,15 @@
 package me.kevingleason.androidrtc;
 
+import android.*;
 import android.app.ListActivity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -132,6 +138,7 @@ public class MainActivity extends ListActivity {
                     try {
                         if (!jsonMsg.has(Constants.JSON_CALL_USER)) return;     //Ignore Signaling messages.
                         String user = jsonMsg.getString(Constants.JSON_CALL_USER);
+                        //TODO: receive call
                         dispatchIncomingCall(user);
                     } catch (JSONException e){
                         e.printStackTrace();
@@ -186,8 +193,9 @@ public class MainActivity extends ListActivity {
                 try {
                     int occupancy = ((JSONObject) message).getInt(Constants.JSON_OCCUPANCY);
                     if (occupancy == 0) {
+                        //TODO: user is not online
                         showToast("User is not online!");
-                        return;
+                        //return;
                     }
                     JSONObject jsonCall = new JSONObject();
                     jsonCall.put(Constants.JSON_CALL_USER, username);
@@ -272,4 +280,5 @@ public class MainActivity extends ListActivity {
         intent.putExtra("oldUsername", this.username);
         startActivity(intent);
     }
+
 }
