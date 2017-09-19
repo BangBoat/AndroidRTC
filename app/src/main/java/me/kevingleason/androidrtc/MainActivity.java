@@ -51,18 +51,19 @@ public class MainActivity extends ListActivity {
         setContentView(R.layout.activity_main);
 
         this.mSharedPreferences = getSharedPreferences(Constants.SHARED_PREFS, MODE_PRIVATE);
-        if (!this.mSharedPreferences.contains(Constants.USER_NAME)){
+        if (!this.mSharedPreferences.contains(Constants.USER_NAME)) {
             Intent intent = new Intent(this, LoginActivity.class);
             startActivity(intent);
             finish();
             return;
         }
-        this.username     = this.mSharedPreferences.getString(Constants.USER_NAME, "");
+        checkPermission();
+        this.username = this.mSharedPreferences.getString(Constants.USER_NAME, "");
         this.stdByChannel = this.username + Constants.STDBY_SUFFIX;
 
         this.mHistoryList = getListView();
-        this.mCallNumET   = (EditText) findViewById(R.id.call_num);
-        this.mUsernameTV  = (TextView) findViewById(R.id.main_username);
+        this.mCallNumET = (EditText) findViewById(R.id.call_num);
+        this.mUsernameTV = (TextView) findViewById(R.id.main_username);
 
         this.mUsernameTV.setText(this.username);
         initPubNub();
@@ -87,7 +88,7 @@ public class MainActivity extends ListActivity {
         int id = item.getItemId();
 
         //noinspection SimplifiableIfStatement
-        switch(id){
+        switch (id) {
             case R.id.action_settings:
                 return true;
             case R.id.action_sign_out:
@@ -100,7 +101,7 @@ public class MainActivity extends ListActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if(this.mPubNub!=null){
+        if (this.mPubNub != null) {
             this.mPubNub.unsubscribeAll();
         }
     }
@@ -108,7 +109,7 @@ public class MainActivity extends ListActivity {
     @Override
     protected void onRestart() {
         super.onRestart();
-        if(this.mPubNub==null){
+        if (this.mPubNub == null) {
             initPubNub();
         } else {
             subscribeStdBy();
@@ -118,8 +119,8 @@ public class MainActivity extends ListActivity {
     /**
      * Subscribe to standby channel so that it doesn't interfere with the WebRTC Signaling.
      */
-    public void initPubNub(){
-        this.mPubNub  = new Pubnub(Constants.PUB_KEY, Constants.SUB_KEY);
+    public void initPubNub() {
+        this.mPubNub = new Pubnub(Constants.PUB_KEY, Constants.SUB_KEY);
         this.mPubNub.setUUID(this.username);
         subscribeStdBy();
     }
@@ -127,7 +128,7 @@ public class MainActivity extends ListActivity {
     /**
      * Subscribe to standby channel
      */
-    private void subscribeStdBy(){
+    private void subscribeStdBy() {
         try {
             this.mPubNub.subscribe(this.stdByChannel, new Callback() {
                 @Override
@@ -136,11 +137,12 @@ public class MainActivity extends ListActivity {
                     if (!(message instanceof JSONObject)) return; // Ignore if not JSONObject
                     JSONObject jsonMsg = (JSONObject) message;
                     try {
-                        if (!jsonMsg.has(Constants.JSON_CALL_USER)) return;     //Ignore Signaling messages.
+                        if (!jsonMsg.has(Constants.JSON_CALL_USER))
+                            return;     //Ignore Signaling messages.
                         String user = jsonMsg.getString(Constants.JSON_CALL_USER);
                         //TODO: receive call
                         dispatchIncomingCall(user);
-                    } catch (JSONException e){
+                    } catch (JSONException e) {
                         e.printStackTrace();
                     }
                 }
@@ -153,43 +155,46 @@ public class MainActivity extends ListActivity {
 
                 @Override
                 public void errorCallback(String channel, PubnubError error) {
-                    Log.d("MA-iPN","ERROR: " + error.toString());
+                    Log.d("MA-iPN", "ERROR: " + error.toString());
                 }
             });
-        } catch (PubnubException e){
-            Log.d("HERE","HEREEEE");
+        } catch (PubnubException e) {
+            Log.d("HERE", "HEREEEE");
             e.printStackTrace();
         }
     }
 
     /**
      * Take the user to a video screen. USER_NAME is a required field.
+     *
      * @param view button that is clicked to trigger toVideo
      */
-    public void makeCall(View view){
+    public void makeCall(View view) {
         String callNum = mCallNumET.getText().toString();
-        if (callNum.isEmpty() || callNum.equals(this.username)){
+        if (callNum.isEmpty() || callNum.equals(this.username)) {
             showToast("Enter a valid user ID to call.");
             return;
         }
         dispatchCall(callNum);
     }
 
-    /**TODO: Debate who calls who. Should one be on standby? Or use State API for busy/available
+    /**
+     * TODO: Debate who calls who. Should one be on standby? Or use State API for busy/available
      * Check that user is online. If they are, dispatch the call by publishing to their standby
-     *   channel. If the publish was successful, then change activities over to the video chat.
+     * channel. If the publish was successful, then change activities over to the video chat.
      * The called user will then have the option to accept of decline the call. If they accept,
-     *   they will be brought to the video chat activity as well, to connect video/audio. If
-     *   they decline, a hangup will be issued, and the VideoChat adapter's onHangup callback will
-     *   be invoked.
+     * they will be brought to the video chat activity as well, to connect video/audio. If
+     * they decline, a hangup will be issued, and the VideoChat adapter's onHangup callback will
+     * be invoked.
+     *
      * @param callNum Number to publish a call to.
      */
-    public void dispatchCall(final String callNum){
+    public void dispatchCall(final String callNum) {
         final String callNumStdBy = callNum + Constants.STDBY_SUFFIX;
         this.mPubNub.hereNow(callNumStdBy, new Callback() {
             @Override
             public void successCallback(String channel, Object message) {
-                Log.d("MA-dC", "HERE_NOW: " +" CH - " + callNumStdBy + " " + message.toString());
+                Log.d("MA-dC", "HERE_NOW: " + " CH - " + callNumStdBy + " " + message.toString());
                 try {
                     int occupancy = ((JSONObject) message).getInt(Constants.JSON_OCCUPANCY);
                     if (occupancy == 0) {
@@ -219,9 +224,10 @@ public class MainActivity extends ListActivity {
 
     /**
      * Handle incoming calls. TODO: Implement an accept/reject functionality.
+     *
      * @param userId
      */
-    private void dispatchIncomingCall(String userId){
+    private void dispatchIncomingCall(String userId) {
         showToast("Call from: " + userId);
         Intent intent = new Intent(MainActivity.this, IncomingCallActivity.class);
         intent.putExtra(Constants.USER_NAME, username);
@@ -229,22 +235,22 @@ public class MainActivity extends ListActivity {
         startActivity(intent);
     }
 
-    private void setUserStatus(String status){
+    private void setUserStatus(String status) {
         try {
             JSONObject state = new JSONObject();
             state.put(Constants.JSON_STATUS, status);
             this.mPubNub.setState(this.stdByChannel, this.username, state, new Callback() {
                 @Override
                 public void successCallback(String channel, Object message) {
-                    Log.d("MA-sUS","State Set: " + message.toString());
+                    Log.d("MA-sUS", "State Set: " + message.toString());
                 }
             });
-        } catch (JSONException e){
+        } catch (JSONException e) {
             e.printStackTrace();
         }
     }
 
-    private void getUserStatus(String userId){
+    private void getUserStatus(String userId) {
         String stdByUser = userId + Constants.STDBY_SUFFIX;
         this.mPubNub.getState(stdByUser, userId, new Callback() {
             @Override
@@ -256,9 +262,10 @@ public class MainActivity extends ListActivity {
 
     /**
      * Ensures that toast is run on the UI thread.
+     *
      * @param message
      */
-    private void showToast(final String message){
+    private void showToast(final String message) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -269,9 +276,9 @@ public class MainActivity extends ListActivity {
 
     /**
      * Log out, remove username from SharedPreferences, unsubscribe from PubNub, and send user back
-     *   to the LoginActivity
+     * to the LoginActivity
      */
-    public void signOut(){
+    public void signOut() {
         this.mPubNub.unsubscribeAll();
         SharedPreferences.Editor edit = this.mSharedPreferences.edit();
         edit.remove(Constants.USER_NAME);
@@ -281,4 +288,38 @@ public class MainActivity extends ListActivity {
         startActivity(intent);
     }
 
+    private void checkPermission() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                    || ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+
+                // Should we show an explanation?
+                if (ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.CAMERA)
+                        || ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.RECORD_AUDIO)) {
+
+                    // Show an explanation to the user *asynchronously* -- don't block
+                    // this thread waiting for the user's response! After the user
+                    // sees the explanation, try again to request the permission.
+                    //Toast.makeText(this, "explain", Toast.LENGTH_SHORT).show();
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
+                            1);
+
+
+                } else {
+
+                    // No explanation needed, we can request the permission.
+
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
+                            1);
+                    //Toast.makeText(this, "request", Toast.LENGTH_SHORT).show();
+
+                    // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                    // app-defined int constant. The callback method gets the
+                    // result of the request.
+                }
+            }
+        }
+    }
 }

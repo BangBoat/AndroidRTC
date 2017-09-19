@@ -104,7 +104,6 @@ public class VideoChatActivity extends ListActivity {
         videoView = findViewById(R.id.gl_surface);
         //videoView.setEGLContextClientVersion(2);
         VideoRendererGui.setView(videoView, null);
-
         bundle = extras;
         checkPermission(extras);
     }
@@ -181,6 +180,7 @@ public class VideoChatActivity extends ListActivity {
             this.backPressedThread.interrupt();
         super.onBackPressed();
     }
+/*
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -194,6 +194,7 @@ public class VideoChatActivity extends ListActivity {
             Toast.makeText(this, "deny", Toast.LENGTH_SHORT).show();
         }
     }
+*/
 
     public List<PeerConnection.IceServer> getXirSysIceServers() {
         List<PeerConnection.IceServer> servers = new ArrayList<PeerConnection.IceServer>();
@@ -340,34 +341,13 @@ public class VideoChatActivity extends ListActivity {
     private void checkPermission(Bundle extras) {
         if (Build.VERSION.SDK_INT >= 23) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
-                    || ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-
-                // Should we show an explanation?
-                if (ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.CAMERA)
-                        || ActivityCompat.shouldShowRequestPermissionRationale(this, android.Manifest.permission.RECORD_AUDIO)) {
-
-                    // Show an explanation to the user *asynchronously* -- don't block
-                    // this thread waiting for the user's response! After the user
-                    // sees the explanation, try again to request the permission.
-                    //Toast.makeText(this, "explain", Toast.LENGTH_SHORT).show();
-                    ActivityCompat.requestPermissions(this,
-                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
-                            1);
-
-                } else {
-
-                    // No explanation needed, we can request the permission.
-
-                    ActivityCompat.requestPermissions(this,
-                            new String[]{android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO},
-                            1);
-                    //Toast.makeText(this, "request", Toast.LENGTH_SHORT).show();
-
-                    // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-                    // app-defined int constant. The callback method gets the
-                    // result of the request.
-                }
-            } else {
+                    && ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                Toast.makeText(VideoChatActivity.this, "require camera and record audio permit", Toast.LENGTH_LONG).show();
+            else if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+                Toast.makeText(VideoChatActivity.this, "require camera permit", Toast.LENGTH_LONG).show();
+            else if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                Toast.makeText(VideoChatActivity.this, "require record audio permit", Toast.LENGTH_LONG).show();
+            else {
                 initPubNubRtc(extras);
             }
         } else
